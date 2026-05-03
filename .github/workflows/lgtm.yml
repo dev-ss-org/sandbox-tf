@@ -27,7 +27,7 @@ jobs:
   require-lgtm:
     name: Require LGTM Comment
     if: github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment' || github.event.issue.pull_request != null
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
 
     steps:
       - name: Update LGTM status
