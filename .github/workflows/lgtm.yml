@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Update LGTM status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const approver = 'l-1cm-l';
