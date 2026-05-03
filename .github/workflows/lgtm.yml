@@ -14,6 +14,11 @@ on:
       - created
       - edited
       - deleted
+  pull_request_review:
+    types:
+      - submitted
+      - edited
+      - dismissed
 
 permissions:
   contents: read
@@ -24,7 +29,7 @@ permissions:
 jobs:
   require-lgtm:
     name: Require LGTM Comment
-    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' || github.event.issue.pull_request != null
     runs-on: ubuntu-latest
 
     steps:
@@ -50,16 +55,31 @@ jobs:
               per_page: 100
             });
 
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100
+            });
+
             const lgtmComments = comments.filter(comment =>
               comment.user?.login === approver &&
               comment.body.trim().toUpperCase() === 'LGTM'
             );
-            const hasLgtm = lgtmComments.length > 0;
+            const lgtmReviews = reviews.filter(review =>
+              review.user?.login === approver &&
+              (review.body ?? '').trim().toUpperCase() === 'LGTM'
+            );
+            const hasLgtm = lgtmComments.length > 0 || lgtmReviews.length > 0;
 
             core.info(`PR #${pr.number} head sha: ${pr.head.sha}`);
-            core.info(`LGTM comments from ${approver}: ${lgtmComments.length}`);
+            core.info(`Issue comments from ${approver} with LGTM: ${lgtmComments.length}`);
+            core.info(`Pull request reviews from ${approver} with LGTM: ${lgtmReviews.length}`);
             for (const comment of lgtmComments) {
               core.info(`LGTM comment ${comment.id} updated at ${comment.updated_at}`);
+            }
+            for (const review of lgtmReviews) {
+              core.info(`LGTM review ${review.id} submitted at ${review.submitted_at}`);
             }
 
             await github.rest.repos.createCommitStatus({
