@@ -69,7 +69,7 @@ jobs:
     name: Terraform Plan
     runs-on: ubuntu-slim
     needs: lint
-    if: github.event_name != 'pull_request' || github.actor == 'l-1cm-l'
+    if: github.event_name == 'pull_request' && github.actor == 'l-1cm-l'
     permissions:
       contents: read
       id-token: write
@@ -170,7 +170,7 @@ jobs:
   apply:
     name: Terraform Apply
     runs-on: ubuntu-slim
-    needs: plan
+    needs: lint
     permissions:
       contents: read
       id-token: write
@@ -204,9 +204,8 @@ jobs:
         id: apply_plan
         run: |
           set +e
-          terraform plan -no-color -out=tfplan > apply-plan.txt
+          terraform plan -no-color -out=tfplan > /dev/null
           exit_code=$?
-          cat apply-plan.txt
           echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
           exit ${exit_code}
 
@@ -265,7 +264,6 @@ jobs:
 
             const planExitCode = '${{ steps.apply_plan.outputs.exit_code }}';
             const applyExitCode = '${{ steps.apply.outputs.exit_code }}';
-            const planOutput = truncate(readFile('apply-plan.txt'));
             const applyOutput = truncate(readFile('apply.txt'));
 
             const success = planExitCode === '0' && applyExitCode === '0';
@@ -279,15 +277,6 @@ jobs:
             - **Result:** ${success ? 'Succeeded' : 'Failed'}
             - **Plan exit code:** \`${planExitCode || 'not available'}\`
             - **Apply exit code:** \`${applyExitCode || 'not available'}\`
-
-            <details>
-            <summary>Show terraform plan for apply</summary>
-
-            \`\`\`terraform
-            ${planOutput || 'No plan output was captured.'}
-            \`\`\`
-
-            </details>
 
             <details>
             <summary>Show terraform apply</summary>
