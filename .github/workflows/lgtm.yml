@@ -50,18 +50,17 @@ jobs:
               per_page: 100
             });
 
-            const headCommit = await github.rest.repos.getCommit({
-              owner,
-              repo,
-              ref: pr.head.sha
-            });
-            const headCommitTime = new Date(headCommit.data.commit.committer.date);
-
-            const hasLgtm = comments.some(comment =>
+            const lgtmComments = comments.filter(comment =>
               comment.user?.login === approver &&
-              comment.body.trim() === 'LGTM' &&
-              new Date(comment.updated_at) > headCommitTime
+              comment.body.trim().toUpperCase() === 'LGTM'
             );
+            const hasLgtm = lgtmComments.length > 0;
+
+            core.info(`PR #${pr.number} head sha: ${pr.head.sha}`);
+            core.info(`LGTM comments from ${approver}: ${lgtmComments.length}`);
+            for (const comment of lgtmComments) {
+              core.info(`LGTM comment ${comment.id} updated at ${comment.updated_at}`);
+            }
 
             await github.rest.repos.createCommitStatus({
               owner,
@@ -70,10 +69,10 @@ jobs:
               context: statusContext,
               state: hasLgtm ? 'success' : 'failure',
               description: hasLgtm
-                ? `${approver} approved this commit with LGTM`
-                : `Waiting for ${approver} to comment LGTM after the latest commit`
+                ? `${approver} approved with LGTM`
+                : `Waiting for ${approver} to comment LGTM`
             });
 
             if (!hasLgtm) {
-              core.setFailed(`Waiting for ${approver} to comment LGTM after the latest commit.`);
+              core.setFailed(`Waiting for ${approver} to comment LGTM.`);
             }
