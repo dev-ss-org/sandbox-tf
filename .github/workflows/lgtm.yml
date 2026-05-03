@@ -57,11 +57,20 @@ jobs:
             });
             const headCommitTime = new Date(headCommit.data.commit.committer.date);
 
-            const hasLgtm = comments.some(comment =>
+            const lgtmComments = comments.filter(comment =>
               comment.user?.login === approver &&
-              comment.body.trim() === 'LGTM' &&
-              new Date(comment.updated_at) > headCommitTime
+              comment.body.trim().toUpperCase() === 'LGTM'
             );
+            const hasLgtm = lgtmComments.some(comment =>
+              new Date(comment.updated_at) >= headCommitTime
+            );
+
+            core.info(`PR #${pr.number} head sha: ${pr.head.sha}`);
+            core.info(`Head commit time: ${headCommitTime.toISOString()}`);
+            core.info(`LGTM comments from ${approver}: ${lgtmComments.length}`);
+            for (const comment of lgtmComments) {
+              core.info(`LGTM comment ${comment.id} updated at ${comment.updated_at}`);
+            }
 
             await github.rest.repos.createCommitStatus({
               owner,
