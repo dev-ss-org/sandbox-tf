@@ -172,6 +172,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
+      issues: write
 
     if: |
       github.event_name == 'push' && github.ref == 'refs/heads/master' ||
@@ -197,7 +199,107 @@ jobs:
         run: terraform init
 
       - name: Terraform plan for apply
-        run: terraform plan -no-color -out=tfplan
+        id: apply_plan
+        run: |
+          set +e
+          terraform plan -no-color -out=tfplan > apply-plan.txt
+          exit_code=$?
+          cat apply-plan.txt
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          exit ${exit_code}
 
       - name: Terraform apply
-        run: terraform apply -auto-approve -no-color tfplan
+        id: apply
+        run: |
+          set +e
+          terraform apply -auto-approve -no-color tfplan > apply.txt
+          exit_code=$?
+          cat apply.txt
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          exit ${exit_code}
+
+      - name: Comment Terraform apply result on merged PR
+        if: always() && github.event_name == 'push'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            const { owner, repo } = context.repo;
+            const sha = context.sha;
+
+            const associatedPulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: sha
+            });
+
+            let pull = associatedPulls.data[0];
+
+            if (!pull) {
+              const message = context.payload.head_commit?.message ?? '';
+              const match = message.match(/Merge pull request #(\d+)/);
+              if (match) {
+                pull = (await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: Number(match[1])
+                })).data;
+              }
+            }
+
+            if (!pull) {
+              core.info(`No merged pull request found for ${sha}; skipping apply comment.`);
+              return;
+            }
+
+            const readFile = path => fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '';
+            const truncate = text => {
+              const maxLength = 50000;
+              return text.length > maxLength
+                ? text.substring(0, maxLength) + "\n\n... output was truncated ..."
+                : text;
+            };
+
+            const planExitCode = '${{ steps.apply_plan.outputs.exit_code }}';
+            const applyExitCode = '${{ steps.apply.outputs.exit_code }}';
+            const planOutput = truncate(readFile('apply-plan.txt'));
+            const applyOutput = truncate(readFile('apply.txt'));
+
+            const success = planExitCode === '0' && applyExitCode === '0';
+            const applySummary = applyOutput || 'Terraform apply did not run.';
+
+            const body = `## Terraform Apply Result
+
+            - **Repository:** \`${{ github.repository }}\`
+            - **Workflow:** \`${{ github.workflow }}\`
+            - **Commit:** \`${{ github.sha }}\`
+            - **Result:** ${success ? 'Succeeded' : 'Failed'}
+            - **Plan exit code:** \`${planExitCode || 'not available'}\`
+            - **Apply exit code:** \`${applyExitCode || 'not available'}\`
+
+            <details>
+            <summary>Show terraform plan for apply</summary>
+
+            \`\`\`terraform
+            ${planOutput || 'No plan output was captured.'}
+            \`\`\`
+
+            </details>
+
+            <details>
+            <summary>Show terraform apply</summary>
+
+            \`\`\`terraform
+            ${applySummary}
+            \`\`\`
+
+            </details>
+            `;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pull.number,
+              body
+            });
