@@ -3,7 +3,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 resource "aws_s3_bucket" "regional_namespace_bucket" {
-  bucket           = "test-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}-an"
+  bucket           = "sample-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}-an"
   bucket_namespace = "account-regional"
 }
 
